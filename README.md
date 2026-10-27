@@ -53,6 +53,19 @@ size or supervise positions. Press Ctrl+C to stop it. A future release
 will add persisted state, reconciliation, paper fills and a guarded
 demo execution adapter.
 
+## Market analysis and strategy research (steps 1–3)
+
+After collecting XAUUSD data from the exact FTMO demo server:
+
+```powershell
+python -m ftmo_gold.research --input data/raw --out reports/market_research.json
+```
+
+This generates gap/quality statistics, recent tick spread percentiles,
+causal M5 regime frequencies and counts of four strategy candidates.
+**Counts are not filled trades and do not establish profitability.**
+See [steps 1–3 report](docs/steps_1_to_3.md). No trading is enabled.
+
 ## 4. Testing
 
 ```powershell
