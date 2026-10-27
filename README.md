@@ -1,27 +1,53 @@
-# FTMO Gold — Phase 0: data audit
+# FTMO Gold Digger
 
-Independent, **read-only** XAUUSD MT5 collector. No orders are submitted. Requires Windows, a running MetaTrader 5 terminal, and a logged-in **demo** account. No passwords stored.
+Research and prototype for an eventual autonomous **XAUUSD** system, aiming
+to test whether a strategy could satisfy **FTMO 2-Step** rules. No evidence of
+profitability exists yet. **No orders are submitted by this repository.**
 
-## Setup (PowerShell)
+## Install (Windows PowerShell)
 
 ```powershell
 py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 pip install -e ".[mt5,dev]"
-python -m ftmo_gold.collector --symbol XAUUSD --days 30 --ticks-days 2 --out data/raw
 pytest -q
 ```
 
-Use the **exact** MT5 symbol; verify it in Market Watch. Collector refuses non-demo accounts and never calls `order_send`.
+## 1. Collect demo-only MT5 XAUUSD data
 
-Outputs: `m1.csv`, `m5.csv`, `m15.csv`, `h1.csv`, `ticks.csv`, `quality.json`. Raw files are ignored by Git. The gap report includes normal market closures; interpret by session schedule. Historical ticks may be incomplete; MT5 chart max bars and broker retention can limit depth. The report records symbol metadata, not account credentials.
+Open the FTMO MT5 **demo** terminal and log in. Check the exact symbol:
 
-## Next gates
+```powershell
+python -m ftmo_gold.collector --symbol XAUUSD --days 90 --ticks-days 2 --out data/raw
+```
 
-1. Verify symbol identity, timestamps, DST, historical coverage and bid/ask availability.
-2. Build realistic execution simulator (spread, slippage, commission, swap, minimum lot, FTMO equity rules).
-3. Define three frozen candidate strategies and walk-forward splits.
-4. Evaluate quantitative baseline versus AI filter on untouched data.
-5. Forward-test in demo; only then consider FTMO challenge execution.
+Produces `m1.csv`, `m5.csv`, `m15.csv`, `h1.csv`, `ticks.csv` and
+`quality.json`. The collector refuses non-demo accounts and does not send
+orders. Missing history cannot be reconstructed; quality report requires review.
 
-No profitability or challenge-pass probability is claimed.
+## 2. Baseline research backtest
+
+**Illustrative parameters ONLY — replace with actual broker specs and costs.**
+OHLC is assumed BID. The spread is XAUUSD price units, **not pips**.
+
+```powershell
+python -m ftmo_gold.backtest --csv data/raw/m5.csv --out reports/baseline.json --spread 0.25 --slippage 0.05 --contract-size 100 --min-lot 0.01 --lot-step 0.01 --commission 0
+```
+
+See `docs/architecture.md` for major simulation limitations. Results may be
+misleading without historical bid/ask, broker data, margin and swaps. The
+implemented 20-bar M5 breakout is an unvalidated **engineering baseline**,
+not our final Gold strategy. FTMO challenge-pass simulation and AI integration
+are not yet implemented.
+
+## 3. Testing
+
+```powershell
+pytest -q
+```
+
+GitHub Actions also runs unit tests. No credentials should be committed;
+`data/`, `reports/` and `.env` are excluded in `.gitignore`.
+
+FTMO official information: https://ftmo.com/fr/2-step-challenge/ and
+https://ftmo.com/fr/faq/quels-instruments-puis-je-trader-et-quelle-strategie-je-suis-autorise-a-utiliser/
