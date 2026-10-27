@@ -128,6 +128,21 @@ python -m ftmo_gold.deep_learning --input data/gold_3y --out reports/gru_5tf --w
 This requires broker-provided historical bars. Results have NOT yet been
 measured on the five-branch architecture. Read [long-history guidance](docs/long_history_5tf.md).
 
+## Apply a trained GRU to a historical market snapshot
+
+The checkpoint now has a separate, reproducible inference adapter
+supporting both three and five timeframe models. It uses only candles
+closed at `--asof` (UTC Unix seconds), verifies continuity of intraday
+sequences and rejects stale price context.
+
+```powershell
+python -m ftmo_gold.dl_inference --input data/gold_3y --checkpoint reports/gru_5tf/model.pt --asof 1793102400 --out reports/inference.json
+```
+
+Replace the timestamp with a genuine fully closed-bar checkpoint in your
+data. This produces DOWN/NEUTRAL/UP class scores, **not** trade instructions
+or calibrated probabilities of profit. No broker order is sent.
+
 ## 4. Testing
 
 ```powershell
