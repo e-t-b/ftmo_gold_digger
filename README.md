@@ -143,6 +143,26 @@ Replace the timestamp with a genuine fully closed-bar checkpoint in your
 data. This produces DOWN/NEUTRAL/UP class scores, **not** trade instructions
 or calibrated probabilities of profit. No broker order is sent.
 
+## Second 3-year 5TF experiment: binary direction V2
+
+A separate Deep Learning research training (PyTorch GRU M5/M15/H1/H4/D1)
+estimated 30-minute price direction on the user's ~3 years of FTMO data.
+On the held-out April–October 2026 set it scored **49.40% accuracy**
+vs **51.20% majority-class** and ROC AUC **0.5088**: still no edge.
+The trained checkpoint and exact trainer are delivered as a conversation ZIP.
+
+The binary network has a distinct 2-output checkpoint format. For it, use:
+
+```powershell
+python -m ftmo_gold.direction_inference --input data/gold_3y --checkpoint reports/direction_v2/model.pt --asof 1793102400 --out reports/direction_inference.json
+```
+
+Use a real completed market timestamp from the CSVs. To hand the
+prediction to the discretionary AI agent, use the
+`DeepLearningDecisionAgent` adapter in `ftmo_gold.dl_agent` with the
+corresponding timestamped market observation. It does not force any strategy
+nor place orders. See [real experiment results](docs/deep_learning_direction_v2_results.md).
+
 ## 4. Testing
 
 ```powershell
