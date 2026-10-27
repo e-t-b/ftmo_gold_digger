@@ -59,6 +59,16 @@ def main():
             with (out/f"{name.lower()}.csv").open("w", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=list(rates.dtype.names)); writer.writeheader(); writer.writerows(rows)
             report["timeframes"][name] = quality(rows, SECONDS[name])
+            # Do not silently present requested coverage as downloaded coverage.
+            report["timeframes"][name]["requested_days"] = args.days
+            if rows:
+                report["timeframes"][name]["actual_span_days"] = round(
+                    (int(rows[-1]["time"]) - int(rows[0]["time"])) / 86400, 2)
+                report["timeframes"][name]["may_be_history_limited"] = (
+                    report["timeframes"][name]["actual_span_days"] < args.days - 7)
+            else:
+                report["timeframes"][name]["actual_span_days"] = 0
+                report["timeframes"][name]["may_be_history_limited"] = True
         if args.ticks_days:
             ticks = mt5.copy_ticks_range(args.symbol, now-timedelta(days=args.ticks_days), now, mt5.COPY_TICKS_ALL)
             if ticks is None:
