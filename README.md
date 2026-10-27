@@ -40,7 +40,20 @@ implemented 20-bar M5 breakout is an unvalidated **engineering baseline**,
 not our final Gold strategy. FTMO challenge-pass simulation and AI integration
 are not yet implemented.
 
-## 3. Testing
+## 3. Autonomous demo signal scanner (NO ORDER EXECUTION)
+
+```powershell
+python -m ftmo_gold.paper --symbol XAUUSD --interval 10 --out data/paper/decisions.jsonl
+```
+
+The scanner runs continuously with the demo terminal open, consumes only
+completed M5 bars, records each candle's candidate signal at most once per
+process, and **never calls MT5 order_send**. It does **not** execute,
+size or supervise positions. Press Ctrl+C to stop it. A future release
+will add persisted state, reconciliation, paper fills and a guarded
+demo execution adapter.
+
+## 4. Testing
 
 ```powershell
 pytest -q
