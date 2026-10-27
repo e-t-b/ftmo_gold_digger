@@ -67,7 +67,7 @@ def main():
                     event["observed_utc"]=datetime.now(timezone.utc).isoformat()
                     event["symbol"]=args.symbol
                     with out.open("a",encoding="utf-8") as f:
-                        f.write(json.dumps(event)+"\\n")
+                        f.write(json.dumps(event)+"\n")
                     print(json.dumps(event),flush=True)
             except Exception as exc:
                 # Connection issues must remain visible. Never infer missed candles.
