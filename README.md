@@ -163,6 +163,22 @@ prediction to the discretionary AI agent, use the
 corresponding timestamped market observation. It does not force any strategy
 nor place orders. See [real experiment results](docs/deep_learning_direction_v2_results.md).
 
+## Phase de vérité V1 — backtest à trades
+
+Un replay du checkpoint PyTorch GRU V3 **gelé** a produit des trades
+simulés sur les données FTMO-Demo avril–octobre 2026. La politique
+directionnelle simple (et **non l'agent LLM libre**) réalise 430 trades
+et **-620,55 USD** net, avec un profit factor **0,874**, sous les
+hypothèses Bid OHLC + spread M5 et slippage fixes. Au spread ×2 :
+**-1 235,77 USD**.
+
+**NO-GO pour le modèle courant**. Ce replay n'est ni un vrai
+backtest de l'agent discrétionnaire ni une simulation FTMO complète en
+equity flottante. Le script exact, le checkpoint, les trades CSV et les
+rapports sont inclus dans l'archive livrée avec l'analyse.
+
+[Rapport technique](docs/phase_verite_v1.md).
+
 ## 4. Testing
 
 ```powershell
