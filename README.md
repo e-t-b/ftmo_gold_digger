@@ -179,6 +179,27 @@ rapports sont inclus dans l'archive livrée avec l'analyse.
 
 [Rapport technique](docs/phase_verite_v1.md).
 
+## Train Gold Digger PPO locally (no ZIP)
+
+The **actual training source** is committed under `training/`.
+After `git pull`, with your FTMO historical CSVs already under
+`data/gold_3y/`:
+
+```powershell
+pip install -e ".[dl,dev]"
+python training/train_massive.py --input data/gold_3y --out reports/rl_massive --episodes 10000 --save-every 25 --validate-every 250
+```
+
+Stop with Ctrl+C. Rerun the same command to resume from
+`reports/rl_massive/latest.pt`; `progress.json` shows progress.
+`best_validation.pt` is the best validation checkpoint.
+No previous chat ZIP is required to execute this.
+**The earlier 100-episode binary checkpoint is NOT committed to GitHub**:
+the GitHub version trains from scratch unless you already have a
+compatible `latest.pt` in the chosen output directory.
+The trainer is research-only, not production FTMO-compliant or profitable.
+See [training report](docs/resumable_massive_training.md).
+
 ## 4. Testing
 
 ```powershell
