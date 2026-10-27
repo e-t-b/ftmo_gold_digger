@@ -107,6 +107,27 @@ FTMO-Demo training reached **40.30% held-out test accuracy**, below
 the **48.71% majority-class baseline**. It is **not deployable**.
 Read [the full GRU training report](docs/gru_training_2026-10-27.md).
 
+## Long-history XAUUSD (H4/D1 enabled)
+
+To collect up to three years **if the FTMO server actually supplies them**:
+
+```powershell
+git pull
+pip install -e ".[mt5,dev,dl]"
+python -m ftmo_gold.collector --symbol XAUUSD --days 1095 --ticks-days 2 --out data/gold_3y
+```
+
+The collector now exports `h4.csv` and `d1.csv` as well. Verify the
+actual history span in `data/gold_3y/quality.json` before training.
+When history is sufficient, train the optional five-branch network:
+
+```powershell
+python -m ftmo_gold.deep_learning --input data/gold_3y --out reports/gru_5tf --with-h4-d1 --epochs 6
+```
+
+This requires broker-provided historical bars. Results have NOT yet been
+measured on the five-branch architecture. Read [long-history guidance](docs/long_history_5tf.md).
+
 ## 4. Testing
 
 ```powershell
