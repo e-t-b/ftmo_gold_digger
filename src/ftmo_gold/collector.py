@@ -5,8 +5,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-TIMEFRAMES = {"M1": "TIMEFRAME_M1", "M5": "TIMEFRAME_M5", "M15": "TIMEFRAME_M15", "H1": "TIMEFRAME_H1"}
-SECONDS = {"M1": 60, "M5": 300, "M15": 900, "H1": 3600}
+TIMEFRAMES = {"M1": "TIMEFRAME_M1", "M5": "TIMEFRAME_M5", "M15": "TIMEFRAME_M15", "H1": "TIMEFRAME_H1", "H4": "TIMEFRAME_H4", "D1": "TIMEFRAME_D1"}
+SECONDS = {"M1": 60, "M5": 300, "M15": 900, "H1": 3600, "H4": 14400, "D1": 86400}
 
 
 def quality(rows, seconds):
