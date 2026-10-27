@@ -86,9 +86,11 @@ def simulate(bars, initial=10000., spread=0.25, slippage=0.05,
             high=bar["high"] if p["side"]=="buy" else bar["high"]+spread
             stop_hit=low<=p["stop"] if p["side"]=="buy" else high>=p["stop"]
             target_hit=high>=p["target"] if p["side"]=="buy" else low<=p["target"]
-            timed=i-p["index"]>=max_hold_bars
+            next_day = (i+1==len(bars) or
+                datetime.fromtimestamp(bars[i+1]["time"],timezone.utc).astimezone(PRAGUE).date()!=day)
+            timed=i-p["index"]>=max_hold_bars or next_day
             if stop_hit or target_hit or timed:
-                reason="stop" if stop_hit else ("target" if target_hit else "timeout")
+                reason="stop" if stop_hit else ("target" if target_hit else "session_close" if next_day else "timeout")
                 exit_price=(p["stop"] if stop_hit else p["target"] if target_hit else
                             bar["close"] if p["side"]=="buy" else bar["close"]+spread)
                 exit_price+=-slippage if p["side"]=="buy" else slippage
