@@ -22,10 +22,8 @@ def load_bars(path):
                 and math.isfinite(b["high"]) and math.isfinite(b["low"])
                 and b["low"] <= min(b["open"], b["close"]) <= max(b["open"], b["close"]) <= b["high"]):
             raise ValueError(f"Invalid OHLC on row {i}")
-        if i and (b["time"] <= rows[i-1]["time"] or b["time"]-rows[i-1]["time"] != 300):
-            # Conservatively disallow all gaps, including market closures:
-            # split into individually contiguous chunks upstream to test them.
-            raise ValueError(f"Non-contiguous M5 input at row {i}; split valid sessions first")
+        if i and b["time"] <= rows[i-1]["time"]:
+            raise ValueError(f"Duplicate/unordered timestamp at row {i}")
     return rows
 
 
@@ -111,7 +109,11 @@ def simulate(bars, initial=10000., spread=0.25, slippage=0.05,
             gate.halted=True
         equity_curve.append(equity)
         if position is None and pending is None and not gate.halted and i>=20 and i+1<len(bars):
-            pending=breakout(bars[i-20:i+1])
+            window=bars[i-20:i+1]
+            if all(b["time"]-a["time"]==300 for a,b in zip(window,window[1:])) and (
+                datetime.fromtimestamp(bars[i+1]["time"], timezone.utc).astimezone(PRAGUE).date()==day
+            ):
+                pending=breakout(window)
     if position:
         raise ValueError("Open position at end of sample; extend test input")
     peak=initial
