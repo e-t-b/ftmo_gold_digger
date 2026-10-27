@@ -66,6 +66,30 @@ causal M5 regime frequencies and counts of four strategy candidates.
 **Counts are not filled trades and do not establish profitability.**
 See [steps 1–3 report](docs/steps_1_to_3.md). No trading is enabled.
 
+## V2: discretionary decision research (steps 1–3)
+
+The agent is **not forced to select a named strategy**. Strategy playbooks
+are optional evidence-poor references; the model may generate its own thesis,
+combine ideas, or WAIT. This does **not** mean spontaneous AI theses are
+authorized for funded-account execution.
+
+```powershell
+# Choose an actual UTC epoch SECOND within your locally collected history,
+# aligned to the latest completed H1/M15/M5 bar:
+python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --output reports/decision.json
+
+# Optional, explicit OpenAI API use (uses your own API key and incurs costs):
+$env:OPENAI_API_KEY = "YOUR_KEY"
+python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --model gpt-4.1-mini --output reports/decision_ai.json
+```
+
+The sample timestamps/spread are **illustrative**; choose the correct bar
+boundary and observed spread for the requested historic instant.
+Without a model, the agent deterministically returns WAIT.
+With a model, it asks for a JSON decision and rejects malformed, stale,
+noncausal or internally inconsistent proposals. Both modes are **research-only**;
+the code does not submit orders. See [V2 steps 1–3](docs/v2_steps_1_to_3.md).
+
 ## 4. Testing
 
 ```powershell
