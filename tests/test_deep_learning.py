@@ -42,3 +42,18 @@ def test_gru_output_and_metrics():
     output=model(torch.zeros(2,16,7),torch.zeros(2,16,7),torch.zeros(2,6,7))
     assert output.shape==(2,3)
     assert stats(np.array([0,1,2]),np.eye(3))['accuracy']==1
+
+
+def test_five_branch_context(tmp_path):
+    make_data(tmp_path)
+    # Synthetic continuous higher timeframe data, never real broker history.
+    for tf,sec in [("h4",14400),("d1",86400)]:
+        t=np.arange(14*86400//sec)*sec+1800000000-(1800000000%sec)
+        close=3000+np.sin(np.arange(len(t))/15)*5
+        pd.DataFrame({'time':t,'open':close-.2,'high':close+.8,'low':close-.8,
+                      'close':close,'tick_volume':200,'spread':40}).to_csv(tmp_path/(tf+'.csv'),index=False)
+    x,y,t,_=assemble(tmp_path,sequence=16,timeframes=("m5","m15","h1","h4","d1"))
+    assert len(x)==5 and len(y)>50
+    assert [a.shape[1] for a in x]==[16,16,6,12,10]
+    model=GoldGRU(branches=5)
+    assert model(*(torch.zeros(2,n,7) for n in [16,16,6,12,10])).shape==(2,3)
