@@ -90,6 +90,23 @@ With a model, it asks for a JSON decision and rejects malformed, stale,
 noncausal or internally inconsistent proposals. Both modes are **research-only**;
 the code does not submit orders. See [V2 steps 1–3](docs/v2_steps_1_to_3.md).
 
+## Deep Learning V1 — real training on FTMO GOLD
+
+A three-branch PyTorch GRU reads strictly closed M5 / M15 / H1 sequences.
+It predicts a 30-minute 3-class price movement label; it does **not**
+execute trades or establish a profitable strategy.
+
+```powershell
+pip install -e ".[dev,dl]"
+python -m ftmo_gold.deep_learning --input data/raw --out reports/gru_v1 --epochs 6
+```
+
+The command writes a trained checkpoint (`model.pt`) and metrics
+(`report.json`) to the ignored reports directory. The initial 90-day
+FTMO-Demo training reached **40.30% held-out test accuracy**, below
+the **48.71% majority-class baseline**. It is **not deployable**.
+Read [the full GRU training report](docs/gru_training_2026-10-27.md).
+
 ## 4. Testing
 
 ```powershell
