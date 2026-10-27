@@ -1,0 +1,10 @@
+[project]
+name = "ftmo-gold"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+[project.optional-dependencies]
+mt5 = ["MetaTrader5>=5.0.45"]
+dev = ["pytest>=8"]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
