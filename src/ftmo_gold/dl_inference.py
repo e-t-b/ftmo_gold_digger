@@ -42,8 +42,8 @@ def infer(input_dir, checkpoint_path, asof_utc):
         if asof_utc - int(closes[-1]) > max(TF_SECONDS[tf]*2, 86400 if tf in ("h4","d1") else 0):
             raise ValueError(f"{tf}: stale input")
         vals = subset[list(FEATURES)].to_numpy(dtype=np.float32)
-        mean = checkpoint["mean"][i].numpy()
-        std = checkpoint["std"][i].numpy()
+        mean = checkpoint["mean"][i].numpy().reshape(1, -1)
+        std = checkpoint["std"][i].numpy().reshape(1, -1)
         if not np.isfinite(vals).all() or not np.isfinite(mean).all() or np.any(std<=0):
             raise ValueError(f"{tf}: invalid model features/scaler")
         vals = np.clip((vals - mean)/std, -12, 12)
