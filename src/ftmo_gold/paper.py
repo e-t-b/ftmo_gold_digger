@@ -17,8 +17,11 @@ def scan_once(mt5, symbol: str, last_closed: int | None = None, lookback=20):
     rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M5, 1, lookback+1)
     if rates is None:
         raise RuntimeError(f"MT5 rates unavailable: {mt5.last_error()}")
-    rows = [{k: (v.item() if hasattr(v, "item") else v)
-             for k, v in zip(rates.dtype.names, row)} for row in rates]
+    if hasattr(rates, "dtype"):
+        rows = [{k: (v.item() if hasattr(v, "item") else v)
+                 for k, v in zip(rates.dtype.names, row)} for row in rates]
+    else:
+        rows = [dict(row) for row in rates]  # test/mocked adapter
     rows.sort(key=lambda b: int(b["time"]))
     if len(rows) < lookback+1:
         return last_closed, {"status":"insufficient_history"}
