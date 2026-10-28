@@ -1,6 +1,6 @@
 """Causal market features and data-quality checks, using CLOSED bars only."""
 from datetime import datetime, timezone
-from math import isfinite
+from math import isfinite, sqrt
 from zoneinfo import ZoneInfo
 
 STEP={"M1":60,"M5":300,"M15":900,"H1":3600}
@@ -46,6 +46,66 @@ def true_range(bar,previous_close):
     h,l=float(bar["high"]),float(bar["low"])
     return max(h-l,abs(h-previous_close),abs(l-previous_close))
 
+def _ema(values, period):
+    alpha=2/(period+1)
+    value=float(values[0])
+    output=[value]
+    for current in values[1:]:
+        value=alpha*float(current)+(1-alpha)*value
+        output.append(value)
+    return output
+
+def technical_features(closed):
+    """Compact causal indicators for the language-model observation."""
+    if len(closed)<52:
+        return None
+    rows=closed[-62:]
+    closes=[float(row["close"]) for row in rows]
+    highs=[float(row["high"]) for row in rows]
+    lows=[float(row["low"]) for row in rows]
+    changes=[right-left for left,right in zip(closes,closes[1:])]
+    gains=[max(change,0.) for change in changes[-14:]]
+    losses=[max(-change,0.) for change in changes[-14:]]
+    average_gain=sum(gains)/14
+    average_loss=sum(losses)/14
+    if average_loss==0:
+        rsi14=100. if average_gain else 50.
+    else:
+        rsi14=100-100/(1+average_gain/average_loss)
+    ema9=_ema(closes,9)
+    ema12=_ema(closes,12)
+    ema21=_ema(closes,21)
+    ema26=_ema(closes,26)
+    macd=[fast-slow for fast,slow in zip(ema12,ema26)]
+    signal=_ema(macd,9)
+    window=closes[-20:]
+    mean20=sum(window)/20
+    std20=sqrt(sum((value-mean20)**2 for value in window)/20)
+    high50=max(highs[-50:]);low50=min(lows[-50:])
+    fib_position=(closes[-1]-low50)/(high50-low50) if high50>low50 else .5
+    volume_key=next((key for key in ("tick_volume","real_volume","volume")
+                     if any(key in row for row in rows)),None)
+    relative_volume=None
+    if volume_key:
+        volumes=[float(row.get(volume_key,0.)) for row in rows[-20:]]
+        baseline=sum(volumes[:-1])/len(volumes[:-1])
+        relative_volume=volumes[-1]/baseline if baseline>0 else None
+    return {
+        "rsi14":round(rsi14,4),
+        "ema9":round(ema9[-1],6),
+        "ema21":round(ema21[-1],6),
+        "ema9_minus_ema21":round(ema9[-1]-ema21[-1],6),
+        "macd":round(macd[-1],6),
+        "macd_signal":round(signal[-1],6),
+        "macd_histogram":round(macd[-1]-signal[-1],6),
+        "bollinger_z20":round((closes[-1]-mean20)/std20,5) if std20 else 0.,
+        "fibonacci_range50":{
+            "low":round(low50,6),"high":round(high50,6),
+            "position_0_1":round(fib_position,5),
+        },
+        "relative_volume20":round(relative_volume,5) if relative_volume is not None else None,
+    }
+
 def features(closed,timeframe="M5",period=14,context=48):
     """All observations must be closed and exactly consecutive on this timeframe."""
     step=STEP[timeframe]
@@ -74,10 +134,12 @@ def features(closed,timeframe="M5",period=14,context=48):
         regime="trending_up" if signed_move>0 else "trending_down"
     elif efficiency<=.25 and expansion<=1.2: regime="ranging"
     else: regime="uncertain"
-    return {"time":ts,"timeframe":timeframe,"atr14":round(atr,6),
+    result={"time":ts,"timeframe":timeframe,"atr14":round(atr,6),
             "prior_atr14":round(prior_atr,6),"atr_expansion":round(expansion,5),
             "efficiency14":round(efficiency,5),"signed_move_atr":round(signed_move,5),
             "prior_high14":high,"prior_low14":low,
             "london_hour":instant.astimezone(ZoneInfo("Europe/London")).hour,
             "ny_hour":instant.astimezone(ZoneInfo("America/New_York")).hour,
             "regime":regime}
+    result["technical"]=technical_features(x)
+    return result

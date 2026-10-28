@@ -66,29 +66,50 @@ causal M5 regime frequencies and counts of four strategy candidates.
 **Counts are not filled trades and do not establish profitability.**
 See [steps 1–3 report](docs/steps_1_to_3.md). No trading is enabled.
 
-## V2: discretionary decision research (steps 1–3)
+## GPT-5.6 Sol decision engine (historical and paper modes)
 
 The agent is **not forced to select a named strategy**. Strategy playbooks
 are optional evidence-poor references; the model may generate its own thesis,
 combine ideas, or WAIT. This does **not** mean spontaneous AI theses are
 authorized for funded-account execution.
 
-```powershell
-# Choose an actual UTC epoch SECOND within your locally collected history,
-# aligned to the latest completed H1/M15/M5 bar:
-python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --output reports/decision.json
+Gold Digger is fixed to `gpt-5.6-sol`; it does not silently route to Astra or
+to PPO. The preferred connection uses the eligible ChatGPT plan through
+OpenAI's public-client PKCE flow, without an API key:
 
-# Optional, explicit OpenAI API use (uses your own API key and incurs costs):
+```powershell
+pip install -e ".[openai,mt5,dev]"
+python -m ftmo_gold.chatgpt_auth login
+python -m ftmo_gold.chatgpt_auth status
+
+# Choose an actual UTC epoch SECOND aligned to completed H1/M15/M5 bars.
+python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --chatgpt --reasoning-effort medium --output reports/decision_sol.json
+
+# Quota-aware MT5 DEMO paper proposals, one maximum at each completed M15 bar.
+python -m ftmo_gold.sol_paper --symbol XAUUSD --reasoning-effort medium --max-calls-5h 20
+```
+
+The login stores renewable credentials outside the repository under the
+platform's local application-data directory. Tokens are never printed or
+written to reports. The paper module refuses non-demo accounts and contains no
+order-submission function. If the local five-hour call budget is exhausted it
+waits instead of changing billing paths.
+
+A separately billed API key is available only through an explicit opt-in:
+
+```powershell
 $env:OPENAI_API_KEY = "YOUR_KEY"
-python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --model gpt-4.1-mini --output reports/decision_ai.json
+python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --paid-api --output reports/decision_sol_paid.json
 ```
 
 The sample timestamps/spread are **illustrative**; choose the correct bar
 boundary and observed spread for the requested historic instant.
 Without a model, the agent deterministically returns WAIT.
-With a model, it asks for a JSON decision and rejects malformed, stale,
-noncausal or internally inconsistent proposals. Both modes are **research-only**;
-the code does not submit orders. See [V2 steps 1–3](docs/v2_steps_1_to_3.md).
+With Sol 5.6, it requests a strict structured decision and rejects malformed,
+stale, noncausal or internally inconsistent proposals. Inputs include causal
+RSI, EMA, MACD, ATR, Bollinger position, 50-bar range/Fibonacci position and
+relative volume when supplied by the broker. Both modes remain **no-order**;
+the code does not submit trades. See [V2 steps 1–3](docs/v2_steps_1_to_3.md).
 
 ## Deep Learning V1 — real training on FTMO GOLD
 

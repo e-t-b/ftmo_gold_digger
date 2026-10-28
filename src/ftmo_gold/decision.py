@@ -129,11 +129,18 @@ def validate(raw: dict, observation: dict, *, position_open=False) -> Decision:
 class FreeDecisionAgent:
     model: Model | None = None
 
-    def decide(self, observation: dict, *, position_open=False) -> Decision:
+    def decide(self, observation: dict, *, position_open=False,
+               trading_context: dict | None = None) -> Decision:
         if self.model is None:
             return wait("No AI model configured; abstain in research mode.")
         try:
-            return validate(self.model.decide(observation,playbooks()),
+            model_observation=dict(observation)
+            model_observation["position"]={"open":bool(position_open)}
+            if trading_context is not None:
+                if not isinstance(trading_context,dict):
+                    raise ValueError("Trading context must be an object")
+                model_observation["trading_context"]=trading_context
+            return validate(self.model.decide(model_observation,playbooks()),
                             observation,position_open=position_open)
         except Exception as exc:
             # Fail closed, never issue orders on parse/model/validation error.
