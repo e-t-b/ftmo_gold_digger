@@ -151,10 +151,16 @@ class OpenAISolDecisionModel:
         payload = {
             "model": MODEL,
             "instructions": SYSTEM,
-            "input": json.dumps({
-                "observation": observation,
-                "reference_playbooks": references,
-            }, separators=(",", ":"), sort_keys=True),
+            "input": [{
+                "role": "user",
+                "content": [{
+                    "type": "input_text",
+                    "text": json.dumps({
+                        "observation": observation,
+                        "reference_playbooks": references,
+                    }, separators=(",", ":"), sort_keys=True),
+                }],
+            }],
             "reasoning": {"effort": self.reasoning_effort},
             "text": {
                 "verbosity": "low",

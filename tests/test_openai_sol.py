@@ -82,6 +82,9 @@ def test_sol_uses_streaming_structured_responses(monkeypatch):
     payload=captured["payload"]
     assert payload["model"]==MODEL=="gpt-5.6-sol"
     assert payload["store"] is False and payload["stream"] is True
+    assert isinstance(payload["input"],list)
+    supplied=json.loads(payload["input"][0]["content"][0]["text"])
+    assert supplied["observation"]["snapshot_id"]==snapshot()["snapshot_id"]
     assert payload["text"]["format"]["type"]=="json_schema"
     assert payload["text"]["format"]["schema"]==DECISION_SCHEMA
     assert captured["authorization"]=="Bearer plan-token"

@@ -10,7 +10,7 @@ from json import dumps
 from math import isfinite
 from typing import Protocol
 from .knowledge import playbooks
-from .market import STEP, audit_bars, features
+from .market import STEP, audit_bars, features, scheduled_market_closure
 
 ACTIONS = {"BUY", "SELL", "WAIT", "CLOSE", "HOLD"}
 
@@ -42,7 +42,9 @@ def _checked_window(rows, timeframe, count):
         raise ValueError(f"{timeframe}: insufficient closed bars")
     chosen=rows[-count:]
     audit=audit_bars(chosen,timeframe)
-    if audit["invalid_ohlc"] or audit["unordered_or_duplicate"] or audit["misaligned"] or audit["gaps"]:
+    unexpected=[gap for gap in audit["gaps"]
+                if not scheduled_market_closure(gap["from"],gap["to"],STEP[timeframe])]
+    if audit["invalid_ohlc"] or audit["unordered_or_duplicate"] or audit["misaligned"] or unexpected:
         raise ValueError(f"{timeframe}: invalid/non-contiguous bars")
     return chosen
 

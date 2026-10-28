@@ -1,9 +1,32 @@
 """Causal market features and data-quality checks, using CLOSED bars only."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from math import isfinite, sqrt
 from zoneinfo import ZoneInfo
 
 STEP={"M1":60,"M5":300,"M15":900,"H1":3600}
+
+def scheduled_market_closure(start, end, step):
+    """Recognize only the normal session breaks observed in the broker feed."""
+    missing=end-start-step
+    closed_at=datetime.fromtimestamp(start+step,timezone.utc)
+    reopened_at=datetime.fromtimestamp(end,timezone.utc)
+    if step==STEP["M5"]:
+        daily=(missing==4500 and (closed_at.hour,closed_at.minute)==(23,50)
+               and (reopened_at.hour,reopened_at.minute)==(1,5)
+               and reopened_at.weekday() in (1,2,3,4))
+        weekend=(closed_at.weekday()==4 and reopened_at.weekday()==0
+                 and (closed_at.hour,closed_at.minute)==(23,50)
+                 and (reopened_at.hour,reopened_at.minute)==(1,5)
+                 and timedelta(hours=48)<=reopened_at-closed_at<=timedelta(hours=54))
+        return daily or weekend
+    daily=(missing==3600 and (closed_at.hour,closed_at.minute)==(0,0)
+           and (reopened_at.hour,reopened_at.minute)==(1,0)
+           and reopened_at.weekday() in (1,2,3,4))
+    weekend=(closed_at.weekday()==5 and reopened_at.weekday()==0
+             and (closed_at.hour,closed_at.minute)==(0,0)
+             and (reopened_at.hour,reopened_at.minute)==(1,0)
+             and timedelta(hours=48)<=reopened_at-closed_at<=timedelta(hours=54))
+    return daily or weekend
 
 def audit_bars(rows,timeframe="M5"):
     step=STEP[timeframe]
@@ -57,7 +80,9 @@ def _ema(values, period):
 
 def technical_features(closed):
     """Compact causal indicators for the language-model observation."""
-    if len(closed)<52:
+    # Fifty closed bars are sufficient for the longest indicator below
+    # (the causal 50-bar range used for the Fibonacci position).
+    if len(closed)<50:
         return None
     rows=closed[-62:]
     closes=[float(row["close"]) for row in rows]
@@ -107,11 +132,13 @@ def technical_features(closed):
     }
 
 def features(closed,timeframe="M5",period=14,context=48):
-    """All observations must be closed and exactly consecutive on this timeframe."""
+    """Use closed bars with no gaps other than scheduled market closures."""
     step=STEP[timeframe]
     if len(closed)<context+2 or context<=period+1 or period<2: return None
     x=closed[-(context+2):]
-    if any(int(b["time"])-int(a["time"])!=step for a,b in zip(x,x[1:])): return None
+    if any((int(b["time"])-int(a["time"])!=step
+            and not scheduled_market_closure(int(a["time"]),int(b["time"]),step))
+           for a,b in zip(x,x[1:])): return None
     if audit_bars(x,timeframe)["invalid_ohlc"]: return None
     trs=[true_range(b,float(a["close"])) for a,b in zip(x,x[1:])]
     atr=sum(trs[-period:])/period
