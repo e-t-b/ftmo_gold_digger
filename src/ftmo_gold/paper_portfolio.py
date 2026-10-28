@@ -91,14 +91,15 @@ class PaperPortfolio:
         self.state["trades"].append(trade)
         return trade
 
-    def process_closed_bar(self,bar,closed_m15,bid,ask,contract_size,spread):
-        """Apply SL/TP conservatively once for a newly closed M15 bar."""
-        timestamp=int(closed_m15)+900
+    def process_closed_bar(self,bar,bar_open,bid,ask,contract_size,spread,bar_seconds=900):
+        """Apply SL/TP conservatively once for a newly closed bar."""
+        timestamp=int(bar_open)+int(bar_seconds)
         self._roll_day(timestamp)
         trade=None
         position=self.state["position"]
-        already=self.state.get("last_processed_m15")
-        if position and already!=closed_m15 and int(closed_m15)>position["opened_m15"]:
+        already=self.state.get("last_processed_bar",self.state.get("last_processed_m15"))
+        opened_bar=(position.get("opened_bar",position.get("opened_m15")) if position else None)
+        if position and already!=bar_open and int(bar_open)>opened_bar:
             high=float(bar["high"]);low=float(bar["low"])
             if position["side"]=="BUY":
                 if low<=position["stop"]:
@@ -115,11 +116,12 @@ class PaperPortfolio:
             if position and timestamp-position["opened_at"]>=self.max_hold_seconds:
                 trade=self._close(ask if position["side"]=="SELL" else bid,
                                   timestamp,"max_hold",contract_size)
-        self.state["last_processed_m15"]=int(closed_m15)
+        self.state["last_processed_bar"]=int(bar_open)
+        self.state["last_processed_m15"]=int(bar_open)
         self._update_equity(bid,ask,contract_size)
         return trade
 
-    def apply_decision(self,decision,bid,ask,timestamp,closed_m15,symbol_info,
+    def apply_decision(self,decision,bid,ask,timestamp,signal_bar,symbol_info,
                        snapshot_id=None):
         """Apply a validated model decision to the virtual portfolio only."""
         contract=float(symbol_info.trade_contract_size)
@@ -156,7 +158,8 @@ class PaperPortfolio:
                 if lots>0:
                     self.state["position"]={"side":decision.action,"entry":round(entry,6),
                         "stop":round(stop,6),"target":round(target,6),"lots":lots,
-                        "opened_at":int(timestamp),"opened_m15":int(closed_m15),
+                        "opened_at":int(timestamp),"opened_bar":int(signal_bar),
+                        "opened_m15":int(signal_bar),
                         "snapshot_id":snapshot_id,"risk_budget":round(risk_budget,2)}
                     self.state["entries_today"]+=1
                     fill={"type":"virtual_open","side":decision.action,

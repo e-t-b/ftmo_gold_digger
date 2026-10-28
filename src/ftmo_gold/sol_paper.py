@@ -103,6 +103,7 @@ def collect_snapshot(mt5,symbol):
     if not -300<=now-asof<=600:
         raise RuntimeError("MT5 closed bars are stale")
     market={"bid":bid,"ask":ask,"spread":ask-bid,
+            "last_m5":frames["M5"][-1],"previous_m5":frames["M5"][-2],
             "last_m15":frames["M15"][-1],"quote_time":quote_time,
             "server_utc_offset_seconds":server_offset}
     return (observe(frames,ask-bid,closed_asof=asof),

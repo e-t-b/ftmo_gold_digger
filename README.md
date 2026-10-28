@@ -102,6 +102,36 @@ assumption, conservative same-bar SL/TP ordering, a maximum holding time and
 Prague-day entry limits. Its journal reports balance, equity, win rate, profit
 factor and maximum drawdown. These are simulated fills, never broker orders.
 
+For M5 timing without one model call every five minutes, use the conditional
+plan scanner. Sol creates an immutable one-hour plan; every newly closed M5 bar
+is then evaluated locally and causally. A trigger can only enter after the
+signal candle closes, never on the candle that created the signal:
+
+```powershell
+python -m ftmo_gold.sol_plan_paper --symbol XAUUSD --max-calls-5h 5 --risk-pct 2 --max-daily-entries 2 --commission-per-lot-roundtrip 6
+```
+
+Plans are cached as JSONL. The deterministic executor can replay those exact
+plans on M5 history without calling Sol again:
+
+```powershell
+python -m ftmo_gold.plan_backtest --m5 data/gold_3y/m5.csv --plans reports/sol_plan_paper/plans.jsonl --out reports/sol_plan_paper/replay.json --spread 0.25 --slippage 0.05 --commission 6 --risk-pct 2
+```
+
+This replay is reproducible for a fixed plan file and fixed execution
+assumptions. It is not tick-accurate and does not make the original language
+model response deterministic. Historical plans must be generated once, cached
+and frozen before replay; protected evaluation dates must remain unused while
+tuning the planner or executor.
+
+Pre-holdout historical plans can be generated in small resumable batches. The
+command requires an explicit protected-period boundary and refuses a batch
+whose end reaches that boundary:
+
+```powershell
+python -m ftmo_gold.plan_history --input data/gold_3y --start <UTC_EPOCH> --end <UTC_EPOCH> --protected-start <UTC_EPOCH> --spread 0.25 --out reports/sol_plan_history/plans.jsonl --max-plans 5
+```
+
 A separately billed API key is available only through an explicit opt-in:
 
 ```powershell

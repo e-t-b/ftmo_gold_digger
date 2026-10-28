@@ -43,10 +43,34 @@ SL/TP handling (SL first if both occur), while Sol can HOLD or CLOSE an open
 virtual position. Balance, equity, P&L, win rate, profit factor and drawdown are
 journaled across restarts. Server-time offsets are normalized to UTC.
 
+## Conditional M5 plans and replay
+
+The quota-efficient M5 architecture does not ask the model to inspect every
+five-minute bar. Sol emits a strict one-hour plan with zero to two conditional
+setups. Each setup has a direction, an absolute trigger level, one of four
+closed-bar trigger types, a stop, a 1R–4R target multiple and a maximum spread.
+The local engine evaluates every newly completed M5 candle. A crossed or
+rejected level can only create an entry after that candle has closed.
+
+Every model plan receives a content hash and is appended to an immutable JSONL
+journal. `plan_backtest` replays the same plans on M5 OHLC, entering at the next
+bar open with explicit spread, slippage, commission, contract size and lot
+step. It uses conservative stop priority when stop and target appear in the
+same bar. Cached replay is deterministic; model generation is not. Historical
+experiments therefore generate plans in bounded batches, freeze the JSONL and
+only then replay it. The protected test period remains excluded during tuning.
+`plan_history` is resumable, shares the local call budget and requires
+`end < protected_start`; it cannot silently cross the caller-declared holdout
+boundary.
+
 ## Current safety status
 
 - Historical proposal mode: implemented.
 - MT5 demo virtual-fill paper mode: implemented.
+- Hourly Sol plan plus causal M5 trigger mode: implemented.
+- Cached-plan M5 historical replay: implemented.
+- Resumable pre-holdout plan batches with an explicit protection boundary:
+  implemented.
 - Live or funded-account orders: not implemented.
 - Virtual position sizing and executable bid/ask revalidation: implemented.
 - Slippage and exact swap/commission reconciliation: still required before any
