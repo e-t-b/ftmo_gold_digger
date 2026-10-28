@@ -17,9 +17,10 @@ import torch
 from torch.distributions import Categorical
 
 from checkpoint_io import safe_torch_load
-from gold_rl_core import Market, Policy, apply_action_mask, rollout, TFS
+from gold_rl_core import (FEATURE_SETS, Market, Policy, apply_action_mask,
+    rollout, TFS)
 
-SCHEMA="8action-ppo-v6-position-context"
+SCHEMA="8action-ppo-v9-configurable-capacity"
 
 
 def evaluate(market, days, mean, std, policy, use_action_mask=True,selection_blocks=3,
@@ -87,6 +88,8 @@ def main():
     p.add_argument("--entropy-coef",type=float,default=.025)
     p.add_argument("--grad-clip",type=float,default=.5)
     p.add_argument("--max-risk-fraction",type=float,choices=(.25,.5,1.),default=.25)
+    p.add_argument("--feature-set",choices=tuple(FEATURE_SETS),default="basic")
+    p.add_argument("--hidden-size",type=int,choices=(16,32,64),default=16)
     p.add_argument("--selection-blocks",type=int,default=3)
     p.add_argument("--selection-metric",choices=("worst_block_avg_day","avg_day"),
                    default="worst_block_avg_day")
@@ -109,7 +112,7 @@ def main():
 
     out=Path(args.out);out.mkdir(exist_ok=True,parents=True)
     torch.set_num_threads(2)
-    market=Market(args.input)
+    market=Market(args.input,args.feature_set)
     t1=int(pd.Timestamp("2026-01-01",tz="UTC").timestamp())
     t2=int(pd.Timestamp("2026-04-01",tz="UTC").timestamp())
     train_days=[d for d in market.keys if (d+1)*86400<t1-86400]
@@ -118,7 +121,7 @@ def main():
     if min(map(len,(train_days,val_days,test_days)))<10:
         raise RuntimeError("Insufficient split days")
     mean,std=market.fit_scaler(t1-86400)
-    policy=Policy()
+    policy=Policy(hidden=args.hidden_size,input_features=len(market.feature_names))
     optim=torch.optim.Adam(policy.parameters(),lr=args.learning_rate)
     latest=out/"latest.pt";bestpath=out/"best_validation.pt"
     history=[];validation=[];best=-float("inf");best_validation=None;start=0
@@ -130,6 +133,8 @@ def main():
             "gae_lambda":args.gae_lambda,"update_epochs":args.update_epochs,
             "rollout_batch_days":args.rollout_batch_days,"minibatch_size":args.minibatch_size,
             "max_risk_fraction":args.max_risk_fraction,
+            "feature_set":args.feature_set,
+            "hidden_size":args.hidden_size,
             "clip_range":args.clip_range,"value_coef":args.value_coef,
             "entropy_coef":args.entropy_coef,"grad_clip":args.grad_clip,
             "selection_blocks":args.selection_blocks,"selection_metric":args.selection_metric}
@@ -150,6 +155,8 @@ def main():
             "gae_lambda":args.gae_lambda,"update_epochs":args.update_epochs,
             "rollout_batch_days":args.rollout_batch_days,"minibatch_size":args.minibatch_size,
             "max_risk_fraction":args.max_risk_fraction,
+            "feature_set":args.feature_set,
+            "hidden_size":args.hidden_size,
             "clip_range":args.clip_range,"value_coef":args.value_coef,
             "entropy_coef":args.entropy_coef,"grad_clip":args.grad_clip,
             "selection_blocks":args.selection_blocks,"selection_metric":args.selection_metric}
@@ -164,6 +171,7 @@ def main():
             "lengths":{"m5":16,"m15":12,"h1":8,"h4":8,"d1":8},
             "state_features":["position","marked_equity","marked_day_pnl","trade_fraction",
                 "position_r","time_remaining"],
+            "market_features":list(market.feature_names),
             "timeframes":list(TFS)})
         summary={"episodes_completed":done,"episodes_target":args.episodes,
             "train_days":len(train_days),"validation_days":len(val_days),
@@ -251,6 +259,8 @@ def main():
                             "rollout_batch_days":args.rollout_batch_days,
                             "minibatch_size":args.minibatch_size,
                             "max_risk_fraction":args.max_risk_fraction,
+                            "feature_set":args.feature_set,
+                            "hidden_size":args.hidden_size,
                             "clip_range":args.clip_range,"value_coef":args.value_coef,
                             "entropy_coef":args.entropy_coef,"grad_clip":args.grad_clip,
                             "selection_blocks":args.selection_blocks,

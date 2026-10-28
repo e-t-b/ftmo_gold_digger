@@ -202,6 +202,20 @@ closed trade. Checkpoints are loaded with PyTorch's restricted
 `weights_only=True` loader. Old `8action-ppo-v1` checkpoints are diagnostic
 inputs only and cannot resume the reinforced trainer.
 
+Technical indicators are available as controlled research feature sets. The
+default remains `basic`, because the multi-seed ablation was more robust than
+the larger sets. `compact` adds RSI 14, EMA 9/21, MACD histogram, ATR 14 and
+relative volume. `technical` also adds Bollinger position and a causal
+50-period Fibonacci-range position:
+
+```powershell
+python training/train_massive.py --input data/gold_3y --out reports/rl_indicators --episodes 512 --feature-set compact --hidden-size 32 --seed 17
+```
+
+Every indicator is computed from the current or earlier closed bars only.
+Feature-set and model-size changes require a new output directory and a fresh
+training run.
+
 For a validation-only comparison of an old checkpoint before retraining:
 
 ```powershell

@@ -22,10 +22,14 @@ def main():
     if checkpoint.get("schema") not in {
         "8action-ppo-v1","8action-ppo-v2-mask","8action-ppo-v2-mask-robust",
         "8action-ppo-v3-batched-gae","8action-ppo-v4-terminal-trade-limit",
-        "8action-ppo-v5-risk-cap","8action-ppo-v6-position-context"}:
+        "8action-ppo-v5-risk-cap","8action-ppo-v6-position-context",
+        "8action-ppo-v7-causal-indicators","8action-ppo-v8-feature-sets",
+        "8action-ppo-v9-configurable-capacity"}:
         raise ValueError("Unsupported checkpoint schema")
-    state_features=int(checkpoint["policy"]["shared.0.weight"].shape[1]-16*5)
-    policy=Policy(state_features=state_features)
+    hidden=int(checkpoint["policy"]["enc.0.weight_hh_l0"].shape[1])
+    state_features=int(checkpoint["policy"]["shared.0.weight"].shape[1]-hidden*5)
+    input_features=int(checkpoint["policy"]["enc.0.weight_ih_l0"].shape[1])
+    policy=Policy(hidden=hidden,state_features=state_features,input_features=input_features)
     policy.load_state_dict(checkpoint["policy"],strict=True)
     market=Market(args.input)
     t1=int(pd.Timestamp("2026-01-01",tz="UTC").timestamp())

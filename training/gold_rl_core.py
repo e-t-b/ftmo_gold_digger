@@ -10,6 +10,51 @@ from torch.distributions import Categorical
 TFS={"m5":300,"m15":900,"h1":3600,"h4":14400,"d1":86400}
 LENS={"m5":16,"m15":12,"h1":8,"h4":8,"d1":8}
 ACTIONS=["WAIT","BUY_R025","BUY_R05","BUY_R1","SELL_R025","SELL_R05","SELL_R1","CLOSE"]
+FEATURE_NAMES=("log_return","range","body","upper_wick","lower_wick","log_volume",
+    "spread_relative","rsi_14","ema_9_21","macd_histogram","atr_14",
+    "volume_z_20","bollinger_position_20","fibonacci_position_50")
+FEATURE_DIM=len(FEATURE_NAMES)
+FEATURE_SETS={"basic":FEATURE_NAMES[:7],"compact":FEATURE_NAMES[:12],
+    "technical":FEATURE_NAMES}
+
+
+def build_features(df):
+    """Build causal, dimensionless features from current and past bars only."""
+    p=pd.Series(df.close.to_numpy(dtype=float));o=pd.Series(df.open.to_numpy(dtype=float))
+    h=pd.Series(df.high.to_numpy(dtype=float));l=pd.Series(df.low.to_numpy(dtype=float))
+    prev=p.shift(1).fillna(p.iloc[0]).clip(lower=.01)
+    volume=pd.Series(df.tick_volume.to_numpy(dtype=float));log_volume=np.log1p(volume)
+    spread=pd.Series(df.spread.to_numpy(dtype=float))*.01
+
+    delta=p.diff().fillna(0.);gain=delta.clip(lower=0.);loss=(-delta).clip(lower=0.)
+    avg_gain=gain.ewm(alpha=1/14,adjust=False,min_periods=2).mean()
+    avg_loss=loss.ewm(alpha=1/14,adjust=False,min_periods=2).mean()
+    rs=avg_gain/avg_loss.replace(0.,np.nan)
+    rsi=100.-100./(1.+rs)
+    rsi=rsi.mask((avg_gain==0.)&(avg_loss==0.),50.).fillna(100.)
+
+    ema9=p.ewm(span=9,adjust=False,min_periods=1).mean()
+    ema21=p.ewm(span=21,adjust=False,min_periods=1).mean()
+    ema12=p.ewm(span=12,adjust=False,min_periods=1).mean()
+    ema26=p.ewm(span=26,adjust=False,min_periods=1).mean()
+    macd=ema12-ema26;signal=macd.ewm(span=9,adjust=False,min_periods=1).mean()
+    true_range=pd.concat([h-l,(h-prev).abs(),(l-prev).abs()],axis=1).max(axis=1)
+    atr=true_range.ewm(alpha=1/14,adjust=False,min_periods=2).mean()
+
+    volume_mean=log_volume.rolling(20,min_periods=2).mean()
+    volume_std=log_volume.rolling(20,min_periods=2).std(ddof=0).clip(lower=1e-6)
+    price_mean=p.rolling(20,min_periods=2).mean()
+    price_std=p.rolling(20,min_periods=2).std(ddof=0).clip(lower=1e-6)
+    swing_high=h.rolling(50,min_periods=2).max()
+    swing_low=l.rolling(50,min_periods=2).min()
+    swing_range=(swing_high-swing_low).clip(lower=1e-6)
+
+    values=np.stack([np.log(p.clip(lower=.01)/prev),(h-l)/prev,(p-o)/prev,
+        (h-np.maximum(o,p))/prev,(np.minimum(o,p)-l)/prev,log_volume,
+        spread/prev,(rsi-50.)/50.,(ema9-ema21)/prev,(macd-signal)/prev,
+        atr/prev,(log_volume-volume_mean)/volume_std,
+        (p-price_mean)/(2.*price_std),2.*(p-swing_low)/swing_range-1.],axis=1)
+    return np.nan_to_num(values,nan=0.,posinf=12.,neginf=-12.).astype("float32")
 
 
 def apply_action_mask(logits,mask):
@@ -21,7 +66,9 @@ def apply_action_mask(logits,mask):
     return logits.masked_fill(~mask,torch.finfo(logits.dtype).min)
 
 class Market:
-    def __init__(self,folder):
+    def __init__(self,folder,feature_set="technical"):
+        if feature_set not in FEATURE_SETS:raise ValueError("Unknown feature set")
+        self.feature_names=FEATURE_SETS[feature_set]
         self.f={}
         for tf,seconds in TFS.items():
             df=pd.read_csv(Path(folder)/(tf+".csv"))
@@ -33,12 +80,9 @@ class Market:
             o=df.open.to_numpy(dtype=float);h=df.high.to_numpy(dtype=float);l=df.low.to_numpy(dtype=float)
             if not (np.all(l<=np.minimum(o,p)) and np.all(h>=np.maximum(o,p))):
                 raise ValueError(f"{tf}: invalid OHLC")
-            f=np.stack([np.log(np.maximum(p,.01)/prev),(h-l)/prev,(p-o)/prev,
-                (h-np.maximum(o,p))/prev,(np.minimum(o,p)-l)/prev,
-                np.log1p(df.tick_volume.to_numpy(dtype=float)),
-                df.spread.to_numpy(dtype=float)*.01/prev],axis=1)
             self.f[tf]={"open_ts":ts,"close_ts":ts+seconds,
-                "values":f.astype("float32"),"open":o,"high":h,"low":l,
+                "values":build_features(df)[:,:len(self.feature_names)],
+                "open":o,"high":h,"low":l,
                 "close":p,"spread":df.spread.to_numpy(dtype=float)*.01}
         self.days=defaultdict(list)
         for i,ts in enumerate(self.f["m5"]["open_ts"]):
@@ -56,7 +100,8 @@ class Market:
                 return None
             if stamp-d["close_ts"][ix]>(TFS[k] if k in ("m5","m15","h1") else 4*86400):
                 return None
-            z=d["values"][ix-n+1:ix+1]
+            feature_count=int(np.asarray(mean[k]).shape[0])
+            z=d["values"][ix-n+1:ix+1,:feature_count]
             x.append(np.clip((z-mean[k])/std[k],-12,12).astype("float32"))
         state=np.array([float(position),float(np.clip((equity-10000)/1000,-2,2)),
             float(np.clip(day_pnl/100,-2,2)),trade_count/3,
@@ -196,15 +241,18 @@ class DayEpisode:
         return reward,finished
 
 class Policy(nn.Module):
-    def __init__(self,hidden=16,state_features=6):
+    def __init__(self,hidden=16,state_features=6,input_features=FEATURE_DIM):
         super().__init__()
-        self.state_features=state_features
-        self.enc=nn.ModuleList([nn.GRU(7,hidden,batch_first=True) for _ in TFS])
+        self.state_features=state_features;self.input_features=input_features
+        self.enc=nn.ModuleList([nn.GRU(input_features,hidden,batch_first=True) for _ in TFS])
         self.shared=nn.Sequential(nn.Linear(hidden*len(TFS)+state_features,64),nn.Tanh())
         self.actor=nn.Linear(64,len(ACTIONS));self.critic=nn.Linear(64,1)
     def forward(self,windows,state):
         if state.shape[1]<self.state_features:raise ValueError("Missing policy state features")
         state=state[:,:self.state_features]
+        if any(window.shape[2]<self.input_features for window in windows):
+            raise ValueError("Missing market features")
+        windows=[window[:,:,:self.input_features] for window in windows]
         v=[r(w)[1][-1] for r,w in zip(self.enc,windows)]
         h=self.shared(torch.cat(v+[state],dim=1))
         return self.actor(h),self.critic(h).squeeze(-1)

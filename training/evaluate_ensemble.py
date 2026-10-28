@@ -34,7 +34,11 @@ def main():
     policies=[];members=[]
     for path in args.checkpoint:
         checkpoint=safe_torch_load(path)
-        policy=Policy();policy.load_state_dict(checkpoint["policy"],strict=True)
+        hidden=int(checkpoint["policy"]["enc.0.weight_hh_l0"].shape[1])
+        state_features=int(checkpoint["policy"]["shared.0.weight"].shape[1]-hidden*5)
+        input_features=int(checkpoint["policy"]["enc.0.weight_ih_l0"].shape[1])
+        policy=Policy(hidden=hidden,state_features=state_features,input_features=input_features)
+        policy.load_state_dict(checkpoint["policy"],strict=True)
         policy.eval();policies.append(policy)
         members.append({"path":str(path),"episode":checkpoint["episode"],
             "validation":checkpoint["validation"],

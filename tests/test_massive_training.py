@@ -5,20 +5,36 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]/"training"
 sys.path.insert(0,str(ROOT))
-from gold_rl_core import Policy, ACTIONS, LENS, DayEpisode, apply_action_mask
+from gold_rl_core import (Policy, ACTIONS, FEATURE_DIM, LENS, DayEpisode,
+    apply_action_mask, build_features)
 from checkpoint_io import safe_torch_load
 from train_massive import checkpoint
 import torch
 import numpy as np
+import pandas as pd
 
 
 def test_eight_actions_and_five_branches():
     policy=Policy()
-    windows=[torch.zeros(2,n,7) for n in LENS.values()]
+    windows=[torch.zeros(2,n,FEATURE_DIM) for n in LENS.values()]
     logits,values=policy(windows,torch.zeros(2,6))
     assert logits.shape==(2,8)
     assert values.shape==(2,)
     assert len(ACTIONS)==8
+
+
+def test_indicator_features_are_finite_and_causal():
+    n=120;base=3000.+np.sin(np.arange(n)/8.)*10.+np.arange(n)*.05
+    frame=pd.DataFrame({"open":base-.2,"high":base+1.,"low":base-1.,
+        "close":base,"tick_volume":200.+np.arange(n)%17,"spread":40.})
+    original=build_features(frame)
+    changed=frame.copy();changed.loc[n-1,["open","high","low","close"]]+=[50,50,50,50]
+    changed.loc[n-1,"tick_volume"]*=10
+    modified=build_features(changed)
+    assert original.shape==(n,FEATURE_DIM)
+    assert np.isfinite(original).all()
+    assert np.array_equal(original[:-1],modified[:-1])
+    assert not np.array_equal(original[-1],modified[-1])
 
 
 def test_atomic_checkpoint(tmp_path):
