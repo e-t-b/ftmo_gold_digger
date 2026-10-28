@@ -95,6 +95,8 @@ def validate(raw: dict, observation: dict, *, position_open=False) -> Decision:
         raise ValueError("Require meaningful bounded reasoning")
     if action in ("CLOSE","HOLD") and not position_open:
         raise ValueError("Position management requires an open position")
+    if action in ("BUY","SELL") and position_open:
+        raise ValueError("Cannot add a second position")
     confidence=raw.get("confidence")
     if confidence is not None and (
         isinstance(confidence,bool) or not isinstance(confidence,(int,float))

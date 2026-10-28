@@ -55,6 +55,7 @@ def test_scheduled_weekend_close_accepts_friday_bar_closing_saturday_utc():
     friday_23_utc=1764975600
     monday_01_utc=1765155600
     assert scheduled_market_closure(friday_23_utc,monday_01_utc,STEP["H1"])
+    assert scheduled_market_closure(friday_23_utc-10800,monday_01_utc-10800,STEP["H1"])
 
 def test_aligned_but_unscheduled_gap_is_rejected():
     assert not scheduled_market_closure(1765281600,1765288800,STEP["H1"])
@@ -84,6 +85,11 @@ def test_bad_decisions_fail_closed():
         def decide(self,observation,references):
             return dict(action="BUY",reason="bad stop provided",stop=3030,target=3050)
     assert FreeDecisionAgent(Invalid()).decide(obs).action=="WAIT"
+    valid_entry=dict(action="BUY",reason="Valid only without an existing position.",
+                     stop=2980,target=3030)
+    try: validate(valid_entry,obs,position_open=True)
+    except ValueError: pass
+    else: assert False,"Second position accepted"
 
 def test_agent_without_model_abstains_and_model_can_wait():
     obs=observation()

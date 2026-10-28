@@ -108,16 +108,17 @@ def test_position_state_is_given_to_sol_proposal():
 def test_local_call_budget_is_conservative(tmp_path):
     budget=LocalCallBudget(tmp_path/"budget.json",max_calls=2)
     assert budget.record(1000)
-    assert budget.record(1001)
-    assert not budget.record(1002)
+    assert not budget.record(1001)
+    assert budget.record(1000+9000)
+    assert not budget.record(1000+9001)
     assert budget.record(1000+5*60*60+1)
 
 
-def test_sol_paper_proposes_but_cannot_order():
+def test_sol_paper_proposes_but_cannot_order(monkeypatch):
     class Item:
         balance=10000;equity=10020;margin_free=9500
     class Tick:
-        bid=3020.;ask=3020.4
+        bid=3020.;ask=3020.4;time=ASOF
     class MT5:
         TIMEFRAME_M5=5;TIMEFRAME_M15=15;TIMEFRAME_H1=60
         def copy_rates_from_pos(self,symbol,timeframe,start,count):
@@ -132,6 +133,7 @@ def test_sol_paper_proposes_but_cannot_order():
             return {"action":"WAIT","reason":"No sufficiently strong setup is present.",
                     "confidence":.2,"stop":None,"target":None,
                     "thesis":"Stand aside","strategy_reference":None}
+    monkeypatch.setattr("ftmo_gold.sol_paper.time.time",lambda:ASOF)
     closed,event=decide_once(MT5(),Model(),"XAUUSD")
     assert closed and event["status"]=="sol_proposal_no_order"
     assert event["decision"]["action"]=="WAIT"

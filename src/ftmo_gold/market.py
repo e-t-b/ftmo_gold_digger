@@ -11,20 +11,20 @@ def scheduled_market_closure(start, end, step):
     closed_at=datetime.fromtimestamp(start+step,timezone.utc)
     reopened_at=datetime.fromtimestamp(end,timezone.utc)
     if step==STEP["M5"]:
-        daily=(missing==4500 and (closed_at.hour,closed_at.minute)==(23,50)
-               and (reopened_at.hour,reopened_at.minute)==(1,5)
-               and reopened_at.weekday() in (1,2,3,4))
-        weekend=(closed_at.weekday()==4 and reopened_at.weekday()==0
-                 and (closed_at.hour,closed_at.minute)==(23,50)
-                 and (reopened_at.hour,reopened_at.minute)==(1,5)
+        pair=((closed_at.hour,closed_at.minute),(reopened_at.hour,reopened_at.minute))
+        daily=(missing==4500 and pair in {
+                   ((23,50),(1,5)),((21,50),(23,5)),((20,50),(22,5))}
+               and reopened_at.weekday() in (0,1,2,3,4))
+        weekend=(pair in {((23,50),(1,5)),((21,50),(23,5)),((20,50),(22,5))}
+                 and closed_at.weekday()==4 and reopened_at.weekday() in (6,0)
                  and timedelta(hours=48)<=reopened_at-closed_at<=timedelta(hours=54))
         return daily or weekend
-    daily=(missing==3600 and (closed_at.hour,closed_at.minute)==(0,0)
-           and (reopened_at.hour,reopened_at.minute)==(1,0)
-           and reopened_at.weekday() in (1,2,3,4))
-    weekend=(closed_at.weekday()==5 and reopened_at.weekday()==0
-             and (closed_at.hour,closed_at.minute)==(0,0)
-             and (reopened_at.hour,reopened_at.minute)==(1,0)
+    pair=((closed_at.hour,closed_at.minute),(reopened_at.hour,reopened_at.minute))
+    daily=(missing==3600 and pair in {
+               ((0,0),(1,0)),((21,0),(22,0)),((22,0),(23,0))}
+           and reopened_at.weekday() in (0,1,2,3,4))
+    weekend=(pair in {((0,0),(1,0)),((21,0),(22,0)),((22,0),(23,0))}
+             and closed_at.weekday() in (4,5) and reopened_at.weekday() in (6,0)
              and timedelta(hours=48)<=reopened_at-closed_at<=timedelta(hours=54))
     return daily or weekend
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .decision import FreeDecisionAgent, observe
 from .model_openai import OpenAISolDecisionModel
+from .paper_portfolio import PaperPortfolio
 
 
 WINDOW_SECONDS=5*60*60
@@ -39,16 +40,19 @@ class LocalCallBudget:
             values=json.loads(self.path.read_text(encoding="utf-8"))
         except (ValueError,OSError):
             return []
-        return [float(value) for value in values if now-float(value)<WINDOW_SECONDS]
+        return sorted(float(value) for value in values if now-float(value)<WINDOW_SECONDS)
 
     def available(self,now=None):
         now=time.time() if now is None else float(now)
-        return len(self._recent(now))<self.max_calls
+        recent=self._recent(now)
+        spacing=WINDOW_SECONDS/self.max_calls
+        return len(recent)<self.max_calls and (not recent or now-recent[-1]>=spacing)
 
     def record(self,now=None):
         now=time.time() if now is None else float(now)
         recent=self._recent(now)
-        if len(recent)>=self.max_calls:
+        spacing=WINDOW_SECONDS/self.max_calls
+        if len(recent)>=self.max_calls or (recent and now-recent[-1]<spacing):
             return False
         recent.append(now)
         self.path.parent.mkdir(parents=True,exist_ok=True)
@@ -84,35 +88,74 @@ def collect_snapshot(mt5,symbol):
     bid=float(tick.bid);ask=float(tick.ask)
     if ask<bid:
         raise RuntimeError("MT5 returned a crossed quote")
+    now=int(time.time())
+    raw_quote_time=int(getattr(tick,"time",0))
+    candidate=round((raw_quote_time-now)/3600)*3600
+    server_offset=(candidate if candidate in (0,3600,7200,10800,14400)
+                   and abs(raw_quote_time-now-candidate)<=120 else 0)
+    for rows in frames.values():
+        for row in rows:
+            row["time"]=int(row["time"])-server_offset
     asof=int(frames["M5"][-1]["time"])+300
-    return observe(frames,ask-bid,closed_asof=asof),int(frames["M15"][-1]["time"])
+    quote_time=raw_quote_time-server_offset
+    if quote_time<=0 or not 0<=now-quote_time<=120:
+        raise RuntimeError("MT5 quote is stale")
+    if not -300<=now-asof<=600:
+        raise RuntimeError("MT5 closed bars are stale")
+    market={"bid":bid,"ask":ask,"spread":ask-bid,
+            "last_m15":frames["M15"][-1],"quote_time":quote_time,
+            "server_utc_offset_seconds":server_offset}
+    return (observe(frames,ask-bid,closed_asof=asof),
+            int(frames["M15"][-1]["time"]),market)
 
 
-def decide_once(mt5,model,symbol,last_m15=None,*,collected=None):
-    observation,closed_m15=collected or collect_snapshot(mt5,symbol)
+def decide_once(mt5,model,symbol,last_m15=None,*,collected=None,
+                portfolio=None,symbol_info=None):
+    observation,closed_m15,market=collected or collect_snapshot(mt5,symbol)
     if last_m15==closed_m15:
         return closed_m15,None
     account=mt5.account_info()
     if account is None:
         raise RuntimeError("MT5 account state unavailable")
-    positions=mt5.positions_get(symbol=symbol) or ()
+    positions=mt5.positions_get(symbol=symbol) or () if portfolio is None else ()
+    virtual_position=portfolio.state["position"] if portfolio else None
+    account_context=({"balance":portfolio.state["balance"],
+                      "equity":portfolio.state["equity"],
+                      "margin_free":portfolio.state["equity"]}
+                     if portfolio else
+                     {"balance":float(account.balance),"equity":float(account.equity),
+                      "margin_free":float(account.margin_free)})
     context={
         "symbol":symbol,
-        "account":{"balance":float(account.balance),"equity":float(account.equity),
-                   "margin_free":float(account.margin_free)},
-        "positions":_position_context(positions),
-        "risk_limits":{"max_risk_per_entry_pct":.25,"max_daily_entries":3,
+        "account":account_context,
+        "positions":[virtual_position] if virtual_position else _position_context(positions),
+        "risk_limits":{"max_risk_per_entry_pct":(
+                           100*portfolio.risk_fraction if portfolio else .25),
+                       "max_daily_entries":(
+                           portfolio.max_daily_entries if portfolio else 3),
+                       "reward_risk_range":[1.,4.],
                        "one_position_at_a_time":True},
     }
     decision=FreeDecisionAgent(model).decide(
-        observation,position_open=bool(positions),trading_context=context)
+        observation,position_open=bool(virtual_position or positions),trading_context=context)
+    fill=None
+    if portfolio:
+        if symbol_info is None:
+            raise RuntimeError("MT5 symbol metadata unavailable")
+        fill=portfolio.apply_decision(decision,market["bid"],market["ask"],
+                                      market["quote_time"],closed_m15,symbol_info,
+                                      observation["snapshot_id"])
+        portfolio.save()
     return closed_m15,{
-        "status":"sol_proposal_no_order",
+        "status":"sol_virtual_paper" if portfolio else "sol_proposal_no_order",
         "model":"gpt-5.6-sol",
         "closed_m15":closed_m15,
         "snapshot_id":observation["snapshot_id"],
         "decision":decision.json(),
-        "position_open":bool(positions),
+        "position_open":bool(portfolio.state["position"] if portfolio else positions),
+        "virtual_fill":fill,
+        "paper_metrics":portfolio.metrics() if portfolio else None,
+        "server_utc_offset_seconds":market["server_utc_offset_seconds"],
     }
 
 
@@ -125,10 +168,18 @@ def main():
     parser.add_argument("--max-calls-5h",type=int,default=20)
     parser.add_argument("--out",default="reports/sol_paper/decisions.jsonl")
     parser.add_argument("--budget-state",default="reports/sol_paper/call_budget.json")
+    parser.add_argument("--portfolio-state",default="reports/sol_paper/portfolio.json")
+    parser.add_argument("--commission-per-lot-roundtrip",type=float,default=0.)
+    parser.add_argument("--max-hold-hours",type=float,default=24.)
+    parser.add_argument("--risk-pct",type=float,default=.25)
+    parser.add_argument("--max-daily-entries",type=int,default=3)
     parser.add_argument("--once",action="store_true")
     args=parser.parse_args()
-    if args.interval<5 or not 1<=args.max_calls_5h<=100:
+    if (args.interval<5 or not 1<=args.max_calls_5h<=100
+            or args.commission_per_lot_roundtrip<0 or args.max_hold_hours<=0):
         parser.error("interval must be >=5 seconds and max-calls-5h must be 1..100")
+    if not 0<args.risk_pct<=2 or not 1<=args.max_daily_entries<=3:
+        parser.error("risk-pct must be in (0,2] and max-daily-entries must be 1..3")
     import MetaTrader5 as mt5
     if not mt5.initialize():
         raise RuntimeError(f"MT5 initialization failed: {mt5.last_error()}")
@@ -137,6 +188,14 @@ def main():
         if account is None or account.trade_mode!=mt5.ACCOUNT_TRADE_MODE_DEMO:
             raise RuntimeError("GPT-5.6 Sol is restricted to an MT5 demo account")
         model=OpenAISolDecisionModel(reasoning_effort=args.reasoning_effort)
+        symbol_info=mt5.symbol_info(args.symbol)
+        if symbol_info is None:
+            raise RuntimeError("MT5 symbol metadata unavailable")
+        portfolio=PaperPortfolio(args.portfolio_state,args.symbol,float(account.balance),
+                                 risk_fraction=args.risk_pct/100,
+                                 max_daily_entries=args.max_daily_entries,
+                                 commission_per_lot_roundtrip=args.commission_per_lot_roundtrip,
+                                 max_hold_hours=args.max_hold_hours)
         budget=LocalCallBudget(args.budget_state,args.max_calls_5h)
         output=Path(args.out);output.parent.mkdir(parents=True,exist_ok=True)
         previous=None
@@ -144,14 +203,22 @@ def main():
             event=None
             try:
                 collected=collect_snapshot(mt5,args.symbol)
-                _,closed_m15=collected
+                _,closed_m15,market=collected
                 if closed_m15!=previous:
+                    auto_close=portfolio.process_closed_bar(
+                        market["last_m15"],closed_m15,market["bid"],market["ask"],
+                        float(symbol_info.trade_contract_size),market["spread"])
                     if budget.record():
                         previous,event=decide_once(mt5,model,args.symbol,previous,
-                                                   collected=collected)
+                                                   collected=collected,portfolio=portfolio,
+                                                   symbol_info=symbol_info)
+                        event["virtual_auto_close"]=auto_close
                     else:
                         previous=closed_m15
-                        event={"status":"local_quota_guard_wait","closed_m15":closed_m15}
+                        portfolio.save()
+                        event={"status":"local_quota_guard_wait","closed_m15":closed_m15,
+                               "virtual_auto_close":auto_close,
+                               "paper_metrics":portfolio.metrics()}
             except Exception as exc:
                 event={"status":"paper_error","error_type":type(exc).__name__}
                 if args.once:

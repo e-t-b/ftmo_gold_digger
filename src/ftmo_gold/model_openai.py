@@ -23,7 +23,8 @@ position state and reference descriptions. Never invent a price, candle, news ev
 fill or future observation. Decide independently; references are optional context.
 Prefer WAIT when the evidence is weak, contradictory, stale, or the spread is poor.
 For a new entry return BUY or SELL with a protective stop and target around the
-observed M5 close. When a position is open, HOLD or CLOSE may be used; do not open
+observed M5 close. The proposed target must provide between 1R and 4R relative
+to the proposed stop. When a position is open, HOLD or CLOSE may be used; do not open
 another position. This response is a proposal: deterministic local risk controls
 retain final authority. Do not claim profitability from a single observation."""
 

@@ -28,19 +28,29 @@ model or PPO.
 
 ## Quota controls
 
-The demo paper scanner considers one decision at most per newly completed M15
-bar and defaults to 20 calls per rolling five-hour window. The local budget is
-conservative: a failed attempt still consumes a slot because it may already
-have reached the remote service. When the local budget is exhausted the scanner
-records `local_quota_guard_wait` and makes no request.
+The demo paper scanner considers a new decision only on a completed M15 bar.
+The rolling budget also spaces requests evenly, so a five-call/five-hour setting
+produces about one Sol analysis per hour instead of consuming the allowance at
+the start of the window. A failed attempt still consumes a slot because it may
+already have reached the remote service. When guarded, the scanner records
+`local_quota_guard_wait` and makes no request.
+
+The persistent virtual portfolio can be configured for 2% nominal risk per
+entry and at most two entries per Prague day. It sizes from executable bid/ask,
+contract size, volume step, proposed stop and commission assumption. Only
+targets between 1R and 4R are accepted. Closed M15 bars trigger conservative
+SL/TP handling (SL first if both occur), while Sol can HOLD or CLOSE an open
+virtual position. Balance, equity, P&L, win rate, profit factor and drawdown are
+journaled across restarts. Server-time offsets are normalized to UTC.
 
 ## Current safety status
 
 - Historical proposal mode: implemented.
-- MT5 demo paper-proposal mode: implemented.
+- MT5 demo virtual-fill paper mode: implemented.
 - Live or funded-account orders: not implemented.
-- Automated position sizing and executable bid/ask revalidation: required
-  before any later execution phase.
+- Virtual position sizing and executable bid/ask revalidation: implemented.
+- Slippage and exact swap/commission reconciliation: still required before any
+  later execution phase.
 - Independent backtest and forward paper results: not yet measured.
 
 No claim of profitability follows from selecting a more capable model. The

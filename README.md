@@ -85,8 +85,9 @@ python -m ftmo_gold.chatgpt_auth status
 # Choose an actual UTC epoch SECOND aligned to completed H1/M15/M5 bars.
 python -m ftmo_gold.analyze --input data/raw --asof 1793102400 --spread 0.41 --chatgpt --reasoning-effort medium --output reports/decision_sol.json
 
-# Quota-aware MT5 DEMO paper proposals, one maximum at each completed M15 bar.
-python -m ftmo_gold.sol_paper --symbol XAUUSD --reasoning-effort medium --max-calls-5h 20
+# Persistent virtual portfolio on MT5 DEMO: about one Sol analysis per hour,
+# 2% virtual risk, at most two daily entries, and locally enforced 1R–4R.
+python -m ftmo_gold.sol_paper --symbol XAUUSD --reasoning-effort medium --max-calls-5h 5 --risk-pct 2 --max-daily-entries 2 --commission-per-lot-roundtrip 6
 ```
 
 The login stores renewable credentials outside the repository under the
@@ -94,6 +95,12 @@ platform's local application-data directory. Tokens are never printed or
 written to reports. The paper module refuses non-demo accounts and contains no
 order-submission function. If the local five-hour call budget is exhausted it
 waits instead of changing billing paths.
+
+The paper scanner persists virtual entries and exits, sizes from executable
+bid/ask and the proposed stop, applies spread, an explicit commission
+assumption, conservative same-bar SL/TP ordering, a maximum holding time and
+Prague-day entry limits. Its journal reports balance, equity, win rate, profit
+factor and maximum drawdown. These are simulated fills, never broker orders.
 
 A separately billed API key is available only through an explicit opt-in:
 
@@ -108,7 +115,7 @@ Without a model, the agent deterministically returns WAIT.
 With Sol 5.6, it requests a strict structured decision and rejects malformed,
 stale, noncausal or internally inconsistent proposals. Inputs include causal
 RSI, EMA, MACD, ATR, Bollinger position, 50-bar range/Fibonacci position and
-relative volume when supplied by the broker. Both modes remain **no-order**;
+relative volume when supplied by the broker. Both modes remain **no broker order**;
 the code does not submit trades. See [V2 steps 1–3](docs/v2_steps_1_to_3.md).
 
 ## Deep Learning V1 — real training on FTMO GOLD
