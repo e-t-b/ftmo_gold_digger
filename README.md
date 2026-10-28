@@ -187,12 +187,27 @@ After `git pull`, with your FTMO historical CSVs already under
 
 ```powershell
 pip install -e ".[dl,dev]"
-python training/train_massive.py --input data/gold_3y --out reports/rl_massive --episodes 10000 --save-every 25 --validate-every 250
+python training/train_massive.py --input data/gold_3y --out reports/rl_reinforced --episodes 512 --save-every 128 --validate-every 128 --seed 17
 ```
 
 Stop with Ctrl+C. Rerun the same command to resume from
-`reports/rl_massive/latest.pt`; `progress.json` shows progress.
-`best_validation.pt` is the best validation checkpoint.
+`reports/rl_reinforced/latest.pt`; `progress.json` shows progress.
+`best_validation.pt` is selected on the worst of three chronological
+validation blocks, rather than on the aggregate peak.
+
+The reinforced trainer uses executable-action masking, a 0.25% risk cap,
+16-day PPO rollout batches, GAE, four update epochs, a 0.025 entropy
+coefficient, position PnL context, and immediate termination after the third
+closed trade. Checkpoints are loaded with PyTorch's restricted
+`weights_only=True` loader. Old `8action-ppo-v1` checkpoints are diagnostic
+inputs only and cannot resume the reinforced trainer.
+
+For a validation-only comparison of an old checkpoint before retraining:
+
+```powershell
+python training/diagnose_policy.py --input data/gold_3y --checkpoint reports/rl_massive/best_validation.pt --output reports/policy_diagnostic.json
+```
+
 No previous chat ZIP is required to execute this.
 **The earlier 100-episode binary checkpoint is NOT committed to GitHub**:
 the GitHub version trains from scratch unless you already have a
