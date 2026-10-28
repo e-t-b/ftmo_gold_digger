@@ -41,3 +41,10 @@ def test_load_plans_accepts_journal_wrapper(tmp_path):
     path=tmp_path/"plans.jsonl"
     path.write_text(json.dumps({"status":"plan","plan":plan()})+"\n",encoding="utf-8")
     assert load_plans(path)[0]["plan_id"]=="plan-one"
+
+
+def test_enter_now_plan_still_enters_next_historical_bar():
+    immediate=plan(created=300)
+    immediate["setups"][0]["trigger"]="ENTER_NOW"
+    result=replay(bars(),[immediate],spread=.2,slippage=0)
+    assert result["transactions"][0]["opened_at"]==300

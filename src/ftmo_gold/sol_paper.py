@@ -98,7 +98,9 @@ def collect_snapshot(mt5,symbol):
             row["time"]=int(row["time"])-server_offset
     asof=int(frames["M5"][-1]["time"])+300
     quote_time=raw_quote_time-server_offset
-    if quote_time<=0 or not 0<=now-quote_time<=120:
+    # Allow a few seconds of harmless terminal/OS clock skew after removing
+    # the broker's whole-hour server offset.
+    if quote_time<=0 or not -5<=now-quote_time<=120:
         raise RuntimeError("MT5 quote is stale")
     if not -300<=now-asof<=600:
         raise RuntimeError("MT5 closed bars are stale")

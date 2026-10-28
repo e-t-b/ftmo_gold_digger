@@ -52,6 +52,13 @@ closed-bar trigger types, a stop, a 1R–4R target multiple and a maximum spread
 The local engine evaluates every newly completed M5 candle. A crossed or
 rejected level can only create an entry after that candle has closed.
 
+`WAIT` is deliberately shorter than a conditional plan: it expires after 15
+minutes, so a setup emerging at the next M15 close can be reassessed. The
+`ENTER_NOW` trigger allows that fresh closed snapshot to enter at the next
+executable quote; historical replay enters at the following M5 open. Adaptive
+mode uses at most 20 calls per rolling five-hour window (15-minute spacing),
+while an active conditional plan normally avoids those extra calls.
+
 Every model plan receives a content hash and is appended to an immutable JSONL
 journal. `plan_backtest` replays the same plans on M5 OHLC, entering at the next
 bar open with explicit spread, slippage, commission, contract size and lot

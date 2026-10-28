@@ -108,8 +108,14 @@ is then evaluated locally and causally. A trigger can only enter after the
 signal candle closes, never on the candle that created the signal:
 
 ```powershell
-python -m ftmo_gold.sol_plan_paper --symbol XAUUSD --max-calls-5h 5 --risk-pct 2 --max-daily-entries 2 --commission-per-lot-roundtrip 6
+python -m ftmo_gold.sol_plan_paper --symbol XAUUSD --max-calls-5h 20 --risk-pct 2 --max-daily-entries 2 --commission-per-lot-roundtrip 6
 ```
+
+A conditional plan remains valid for one hour. A `WAIT` plan expires after 15
+minutes, allowing Sol to reassess at the next M15 close. `ENTER_NOW` permits a
+newly confirmed setup to enter at the first executable quote after that close.
+Run with `--max-calls-5h 20` for this adaptive 15-minute worst case; conditional
+hours normally consume fewer calls.
 
 Plans are cached as JSONL. The deterministic executor can replay those exact
 plans on M5 history without calling Sol again:

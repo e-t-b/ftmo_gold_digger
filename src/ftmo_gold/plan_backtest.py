@@ -8,7 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .backtest import load_bars, round_down_lots
-from .sol_plan import trigger_plan
+from .sol_plan import immediate_plan_decision, trigger_plan
 
 
 PRAGUE=ZoneInfo("Europe/Prague")
@@ -65,8 +65,10 @@ def replay(bars,plans,*,initial=10000.,spread=.25,slippage=.05,
         if day!=active_day:
             active_day=day;day_start=equity;entries_today=0;daily_halted=False
 
-        while plan_index<len(plans) and int(plans[plan_index]["created_at"])<closed_at:
+        newly_available=[]
+        while plan_index<len(plans) and int(plans[plan_index]["created_at"])<=closed_at:
             available.append(plans[plan_index]);plan_index+=1
+            newly_available.append(available[-1])
         available=[plan for plan in available if int(plan["valid_until"])>=closed_at]
 
         if pending is not None and position is None:
@@ -125,11 +127,13 @@ def replay(bars,plans,*,initial=10000.,spread=.25,slippage=.05,
             total_breach=True
         equity_curve.append(equity)
 
-        if position is None and pending is None and index>0:
+        if position is None and pending is None:
             candidates=[plan for plan in available if plan["plan_id"] not in consumed]
             if candidates:
                 plan=max(candidates,key=lambda item:int(item["created_at"]))
-                decision=trigger_plan(plan,bars[index-1],bar,spread)
+                decision=(immediate_plan_decision(plan,bar,spread)
+                          if plan in newly_available else
+                          trigger_plan(plan,bars[index-1],bar,spread) if index>0 else None)
                 if decision:
                     setup=next(item for item in plan["setups"]
                                if item["label"]==decision.strategy_reference)

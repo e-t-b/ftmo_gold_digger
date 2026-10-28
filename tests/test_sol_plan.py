@@ -1,7 +1,8 @@
 import json
 
 from ftmo_gold.decision import observe
-from ftmo_gold.sol_plan import PLAN_SCHEMA, SolPlanModel, setup_triggered, trigger_plan, validate_plan
+from ftmo_gold.sol_plan import (PLAN_SCHEMA,SolPlanModel,immediate_plan_decision,
+                                setup_triggered,trigger_plan,validate_plan)
 
 
 ASOF=86400*100
@@ -28,6 +29,9 @@ def test_plan_is_bounded_hashed_and_expires():
     assert len(plan["plan_id"])==20
     assert plan["valid_until"]-plan["created_at"]==3600
     assert plan["snapshot_id"]==observation()["snapshot_id"]
+    waiting=validate_plan({"mode":"WAIT","reason":"No reliable setup is present yet.",
+                           "confidence":.2,"setups":[]},observation())
+    assert waiting["valid_until"]-waiting["created_at"]==900
 
 
 def test_cross_requires_prior_bar_and_future_closed_bar():
@@ -50,6 +54,14 @@ def test_rejection_triggers_are_directional():
     down={"open":3001.,"high":3003.,"low":2997.,"close":2999.}
     assert setup_triggered(bullish,previous,up)
     assert setup_triggered(bearish,previous,down)
+
+
+def test_enter_now_uses_closed_snapshot_and_executable_spread():
+    plan=validate_plan(raw_plan("ENTER_NOW"),observation())
+    current={"open":3000.,"high":3002.,"low":2998.,"close":3000.}
+    decision=immediate_plan_decision(plan,current,.2)
+    assert decision.action=="BUY" and decision.target>3000.2
+    assert immediate_plan_decision(plan,current,.6) is None
 
 
 def test_invalid_plan_fails_closed():

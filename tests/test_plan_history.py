@@ -20,6 +20,6 @@ def test_historical_observation_is_closed_and_causal():
                for value in observation["timeframes"].values())
 
 
-def test_candidate_times_are_h1_closes_inside_bounds():
+def test_candidate_times_are_m15_closes_inside_bounds():
     values=candidate_times(frames(),ASOF-7200,ASOF)
     assert values and all(ASOF-7200<=value<=ASOF for value in values)

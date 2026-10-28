@@ -40,8 +40,8 @@ def historical_observation(frames,asof,spread):
 
 
 def candidate_times(frames,start,end):
-    return [int(row["time"])+STEP["H1"] for row in frames["H1"]
-            if int(start)<=int(row["time"])+STEP["H1"]<=int(end)]
+    return [int(row["time"])+STEP["M15"] for row in frames["M15"]
+            if int(start)<=int(row["time"])+STEP["M15"]<=int(end)]
 
 
 def main():
@@ -60,17 +60,22 @@ def main():
     if args.spread<0 or not 1<=args.max_plans<=20:
         parser.error("Invalid spread or max-plans")
     frames=load_frames(args.input);output=Path(args.out);output.parent.mkdir(parents=True,exist_ok=True)
-    completed=set()
+    completed=set();latest=None
     if output.exists():
         with output.open(encoding="utf-8") as stream:
             for line in stream:
                 if line.strip():
-                    value=json.loads(line);completed.add(int(value["plan"]["created_at"]))
+                    value=json.loads(line);plan=value["plan"]
+                    completed.add(int(plan["created_at"]))
+                    if latest is None or int(plan["created_at"])>int(latest["created_at"]):
+                        latest=plan
     model=SolPlanModel(reasoning_effort=args.reasoning_effort)
     budget=LocalCallBudget(args.budget_state,args.max_calls_5h)
     written=0
     for asof in candidate_times(frames,args.start,args.end):
         if asof in completed:
+            continue
+        if latest is not None and asof<int(latest["valid_until"]):
             continue
         if not budget.record():
             break
@@ -88,6 +93,7 @@ def main():
             continue
         with output.open("a",encoding="utf-8") as stream:
             stream.write(json.dumps(value,separators=(",",":"))+"\n")
+        latest=plan
         written+=1
         if written>=args.max_plans:
             break

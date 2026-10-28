@@ -9,7 +9,7 @@ from .decision import Decision
 from .model_openai import MODEL, OpenAISolDecisionModel
 
 
-TRIGGERS={"CLOSE_ABOVE","CLOSE_BELOW","BULLISH_REJECTION","BEARISH_REJECTION"}
+TRIGGERS={"ENTER_NOW","CLOSE_ABOVE","CLOSE_BELOW","BULLISH_REJECTION","BEARISH_REJECTION"}
 
 PLAN_SCHEMA={
     "type":"object",
@@ -42,7 +42,9 @@ Use only the supplied CLOSED M5/M15/H1 observations and account context. You do
 not see future bars. Return WAIT with no setups when evidence is weak. Otherwise
 return one or two precise setups that a deterministic engine can evaluate after
 each future M5 close. BUY stops must be below trigger levels; SELL stops above.
-Reward/risk must be 1R through 4R. Use CLOSE_ABOVE/CLOSE_BELOW for a genuine
+Reward/risk must be 1R through 4R. Use ENTER_NOW only when the supplied closed
+snapshot already confirms an entry that should be taken at the next executable
+quote. Use CLOSE_ABOVE/CLOSE_BELOW for a genuine
 cross from the prior close, and BULLISH_REJECTION/BEARISH_REJECTION for a level
 touched intrabar and rejected by a directional candle. Keep max_spread at or
 below three times the supplied spread (and always below 5). Never invent news
@@ -92,8 +94,9 @@ def validate_plan(raw,observation,valid_seconds=3600):
             "trigger":trigger,"trigger_level":round(level,6),"stop":round(stop,6),
             "reward_risk":round(rr,4),"max_spread":round(max_spread,6)})
     created=int(observation["asof_utc"])
+    duration=900 if raw["mode"]=="WAIT" else int(valid_seconds)
     body={"model":MODEL,"snapshot_id":observation["snapshot_id"],
-          "created_at":created,"valid_until":created+int(valid_seconds),
+          "created_at":created,"valid_until":created+duration,
           "mode":raw["mode"],"reason":reason,"confidence":float(confidence),
           "setups":normalized}
     body["plan_id"]=sha256(json.dumps(body,sort_keys=True,separators=(",",":")).encode()).hexdigest()[:20]
@@ -105,6 +108,8 @@ def setup_triggered(setup,previous,current):
     prior_close=float(previous["close"]);close=float(current["close"])
     high=float(current["high"]);low=float(current["low"]);opened=float(current["open"])
     trigger=setup["trigger"]
+    if trigger=="ENTER_NOW":
+        return False
     if trigger=="CLOSE_ABOVE":
         return prior_close<=level<close
     if trigger=="CLOSE_BELOW":
@@ -112,6 +117,25 @@ def setup_triggered(setup,previous,current):
     if trigger=="BULLISH_REJECTION":
         return low<=level<close and close>opened
     return high>=level>close and close<opened
+
+
+def immediate_plan_decision(plan,current,spread):
+    """Execute an ENTER_NOW setup just after the snapshot that created it."""
+    if plan.get("mode")!="CONDITIONAL":
+        return None
+    for setup in plan["setups"]:
+        if setup["trigger"]!="ENTER_NOW" or spread>float(setup["max_spread"]):
+            continue
+        direction=setup["direction"]
+        reference=float(current["close"])+(spread if direction=="BUY" else 0.)
+        stop=float(setup["stop"])
+        if not (stop<reference if direction=="BUY" else stop>reference):
+            continue
+        risk=abs(reference-stop);rr=float(setup["reward_risk"])
+        target=reference+(risk*rr if direction=="BUY" else -risk*rr)
+        return Decision(direction,f"Immediate setup confirmed by plan {plan['plan_id']}.",
+                        float(plan["confidence"]),stop,target,plan["reason"],setup["label"])
+    return None
 
 
 def trigger_plan(plan,previous,current,spread):

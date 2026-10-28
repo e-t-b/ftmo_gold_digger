@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .paper_portfolio import PaperPortfolio
 from .sol_paper import LocalCallBudget, collect_snapshot
-from .sol_plan import SolPlanModel, trigger_plan
+from .sol_plan import SolPlanModel, immediate_plan_decision, trigger_plan
 
 
 def _append(path,value):
@@ -33,6 +33,15 @@ def _load_active(path):
     if not isinstance(value,dict) or not {"plan","consumed","source_h1_closed_at"}<=set(value):
         raise RuntimeError("Invalid active plan state")
     return value
+
+
+def refresh_due(active,h1_closed,asof,position_open=False):
+    if position_open:
+        return False
+    plan=active.get("plan")
+    expired=not plan or int(plan["valid_until"])<=int(asof)
+    new_h1=active.get("source_h1_closed_at")!=int(h1_closed)
+    return expired and (new_h1 or (plan or {}).get("mode")=="WAIT")
 
 
 def main():
@@ -99,15 +108,22 @@ def main():
                             events.append({"status":"m5_trigger","plan_id":plan["plan_id"],
                                 "decision":decision.json(),"virtual_fill":fill})
                     h1_closed=int(observation["timeframes"]["H1"]["last_closed_at_utc"])
-                    plan_expired=not active.get("plan") or int(active["plan"]["valid_until"])<=int(observation["asof_utc"])
-                    new_h1=active.get("source_h1_closed_at")!=h1_closed
-                    if not portfolio.state["position"] and new_h1 and plan_expired:
+                    if refresh_due(active,h1_closed,observation["asof_utc"],
+                                   bool(portfolio.state["position"])):
                         if budget.record():
                             context={"paper":portfolio.context(),"risk_pct":args.risk_pct,
                                      "max_daily_entries":args.max_daily_entries,
                                      "reward_risk_range":[1,4],"symbol":args.symbol}
                             plan=model.create_plan(observation,context)
                             active={"plan":plan,"consumed":False,"source_h1_closed_at":h1_closed}
+                            immediate=immediate_plan_decision(plan,current,market["spread"])
+                            if immediate:
+                                fill=portfolio.apply_decision(immediate,market["bid"],market["ask"],
+                                    market["quote_time"],current_m5,symbol_info,
+                                    observation["snapshot_id"])
+                                active["consumed"]=True
+                                events.append({"status":"m5_enter_now","plan_id":plan["plan_id"],
+                                    "decision":immediate.json(),"virtual_fill":fill})
                             _save_active(args.active_plan,active)
                             _append(args.plans,{"status":"sol_hour_plan","plan":plan,
                                 "observed_utc":datetime.now(timezone.utc).isoformat()})
